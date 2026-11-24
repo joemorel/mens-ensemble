@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Ensemble">
+<meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Men's Ensemble</title>
+<style>
+:root{
+  --bg:#f3f4f6; --panel:#ffffff; --ink:#1f2328; --muted:#667085; --line:#e2e5e9;
+  --empty:#eceef1; --hi:#2563eb; --danger:#c62828;
+  --P:#16a34a; --L:#f2b705; --E:#64748b; --A:#dc2626;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#141619; --panel:#1d2024; --ink:#e8eaed; --muted:#98a2ad; --line:#2d3137; --empty:#262a30; --hi:#60a5fa; --danger:#ef5350; }
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font:15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  background:var(--bg); color:var(--ink);
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+  display:flex; flex-direction:column; overflow:hidden;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+input,select{font:inherit;-webkit-user-select:text;user-select:text}
+button{font:inherit;color:inherit;cursor:pointer}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+h1{font-size:17px;margin:0;white-space:nowrap}
+h2{font-size:19px;margin:0 0 14px}
+.tabs{display:flex;background:var(--empty);border-radius:10px;padding:3px;margin:0 auto}
+.tabs button{border:0;background:none;padding:8px 20px;border-radius:8px;font-weight:600;color:var(--muted)}
+.tabs button.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:8px 13px;font-weight:600;white-space:nowrap;position:relative}
+.btn:active{opacity:.6}
+.btn.primary{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.btn.danger{color:var(--danger)}
+.btn.small{padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.35}
+.dot-alert{position:absolute;top:-4px;right:-4px;width:11px;height:11px;border-radius:50%;background:#f59e0b;border:2px solid var(--panel)}
+main{flex:1;min-height:0;display:flex;flex-direction:column}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.toolbar select, .toolbar input[type=date]{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:9px;padding:7px 10px;font-weight:600;max-width:220px}
+.sep{width:1px;align-self:stretch;background:var(--line);margin:0 4px}
+.spacer{flex:1}
+.stepper{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--muted)}
+.stepper button{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--panel);font-size:19px;line-height:1}
+.stepper b{min-width:20px;text-align:center;color:var(--ink)}
+.body{flex:1;min-height:0;display:flex}
+.pool{width:230px;flex:none;overflow-y:auto;-webkit-overflow-scrolling:touch;border-right:1px solid var(--line);padding:12px;background:var(--panel)}
+.stage{flex:1;min-width:0;overflow:auto;padding:16px}
+.hint{color:var(--muted);font-size:13px;margin:0 0 10px}
+.ghead{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 6px}
+.ghead:first-of-type{margin-top:4px}
+.ghead span.n{margin-left:auto;font-weight:600}
+.dot{width:11px;height:11px;border-radius:50%;background:var(--pc);flex:none;display:inline-block}
+.chip{display:flex;flex-direction:column;padding:7px 10px;border-radius:9px;background:var(--empty);margin-bottom:6px;border-left:6px solid var(--pc);touch-action:pan-y}
+.chip .fn{font-weight:700}
+.chip .ln{font-size:12px;color:var(--muted)}
+.chip.sel,.occ.sel{outline:3px solid var(--hi);outline-offset:1px}
+.grid{display:grid;gap:6px;grid-template-columns:52px repeat(var(--cols),minmax(0,1fr))}
+.rowlabel{display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted);font-weight:700}
+.seat{border-radius:10px;background:var(--empty);border:1.5px dashed var(--line);min-height:66px;display:flex;min-width:0}
+.seat.full{border:0;background:none}
+.seat.drop{outline:3px solid var(--hi);outline-offset:1px}
+.occ{flex:1;min-width:0;border-radius:10px;background:var(--pc);color:#fff;padding:6px 4px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;touch-action:none}
+.occ .fn,.acell .fn{font-weight:700;font-size:14px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.occ .ln,.acell .ln{font-size:11px;opacity:.9;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.director{grid-column:2/-1;text-align:center;margin-top:10px;padding:8px;border-top:3px solid var(--line);color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:18px;font-size:13px;color:var(--muted);justify-content:center}
+.legend span{display:flex;align-items:center;gap:6px}
+.ghost{position:fixed;left:0;top:0;z-index:1000;pointer-events:none;opacity:.95;box-shadow:0 10px 28px rgba(0,0,0,.35);border-radius:10px}
+.dragging{opacity:.25}
+/* attendance */
+.acell{border:0;border-radius:10px;min-height:66px;min-width:0;background:var(--empty);color:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px;border-top:6px solid var(--pc);touch-action:manipulation}
+.acell .st{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin-top:2px;opacity:.9}
+.acell.s-P{background:var(--P);color:#fff}
+.acell.s-L{background:var(--L);color:#2b2100}
+.acell.s-E{background:var(--E);color:#fff}
+.acell.s-A{background:var(--A);color:#fff}
+.aempty{border-radius:10px;border:1.5px dashed var(--line);min-height:66px}
+.offchart{margin-top:22px}
+.offchart .cells{display:grid;gap:6px;grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}
+.counts{display:flex;gap:6px;flex-wrap:wrap}
+.cnt{display:flex;align-items:center;gap:5px;font-size:13px;font-weight:700;padding:5px 9px;border-radius:8px;background:var(--empty)}
+.cnt i{width:10px;height:10px;border-radius:3px;background:var(--c)}
+/* roster */
+.scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px 40px}
+.addform{display:flex;gap:8px;flex-wrap:wrap}
+.addform input,.addform select,.field input{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:9px;padding:8px 10px;width:150px}
+.rrow{display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--panel);border-radius:10px;margin-bottom:6px}
+.rrow .name{flex:1;text-align:left;background:none;border:0;padding:6px 0;font-weight:600;min-width:120px}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg button{border:1.5px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--pc);border-color:var(--pc);color:#fff}
+.sectionhead{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:22px 0 8px}
+/* modal */
+.backdrop{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:2000;padding:20px}
+.modal{background:var(--panel);border-radius:16px;padding:22px;width:min(560px,100%);max-height:85vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+.modal.wide{width:min(820px,100%)}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap}
+.label{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px}
+.field{display:flex;gap:10px;flex-wrap:wrap}
+.field input{flex:1;min-width:140px}
+.stack{display:flex;flex-direction:column;gap:10px}
+.stack .btn{text-align:left;padding:12px 14px}
+.stack .btn small{display:block;font-weight:400;color:var(--muted);margin-top:2px}
+.hrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.hrow b{min-width:160px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:center}
+th{font-size:12px;color:var(--muted);text-transform:uppercase;position:sticky;top:-22px;background:var(--panel)}
+td:first-child,th:first-child{text-align:left}
+.status-msg{padding:10px 12px;border-radius:10px;background:var(--empty);font-size:14px;margin-bottom:14px}
+@media (max-width:900px){ .pool{width:180px} .tabs button{padding:8px 12px} h1{display:none} }
+</style>
+</head>
+<body>
+<header>
+  <h1>Men's Ensemble</h1>
+  <nav class="tabs">
+    <button data-mode="seating">Seating</button>
+    <button data-mode="attendance">Attendance</button>
+    <button data-mode="roster">Roster</button>
+  </nav>
+  <button class="btn" data-action="backup">Backup<span id="backup-dot" class="dot-alert" hidden></span></button>
+</header>
+<main id="view"></main>
+<div id="modal-root"></div>
+<input type="file" id="import-input" accept=".json,application/json" hidden>
+
+<script>
+'use strict';
+// ---------- constants ----------
+const PARTS = [
+  {id:'T1', name:'Tenor I',  color:'#2563eb'},
+  {id:'T2', name:'Tenor II', color:'#0d9488'},
+  {id:'BR', name:'Baritone', color:'#d97706'},
+  {id:'BS', name:'Bass',     color:'#be185d'},
+];
+const NOPART = {id:'', name:'No part', color:'#8a929c'};
+const ALLPARTS = [...PARTS, NOPART];
+const PART_ORDER = {T1:0, T2:1, BR:2, BS:3, '':4};
+const STATUS = {P:'Present', L:'Late', E:'Excused', A:'Absent'};
+const STATUS_COLOR = {P:'var(--P)', L:'var(--L)', E:'var(--E)', A:'var(--A)'};
+const CYCLE = [undefined, 'P', 'L', 'E', 'A'];
+const KEY = 'mens-ensemble-v1';
+
+// ---------- helpers ----------
+const $ = (s, r=document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+const partOf = id => PARTS.find(p => p.id === id) || NOPART;
+function todayStr(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function fmtDate(s, opts){ const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d).toLocaleDateString(undefined, opts || {weekday:'short', month:'short', day:'numeric', year:'numeric'}); }
+const sortByPart = (a,b) => PART_ORDER[a.part]-PART_ORDER[b.part] || a.last.localeCompare(b.last) || a.first.localeCompare(b.first);
+const sortByName = (a,b) => a.last.localeCompare(b.last) || a.first.localeCompare(b.first);
+
+// ---------- state ----------
+function newChart(name, rows, cols){ return {id:uid(), name, rows, cols, seats:{}}; }
+function blankState(){ const c = newChart('Rehearsal', 4, 11); return {version:1, members:[], charts:[c], currentChartId:c.id, rehearsals:{}, meta:{lastChange:0, lastExport:0}}; }
+function normalize(s){
+  s.members = Array.isArray(s.members) ? s.members : [];
+  s.members.forEach(m => { if (m.active === undefined) m.active = true; m.part = m.part || ''; m.first = m.first || ''; m.last = m.last || ''; });
+  if (!Array.isArray(s.charts) || !s.charts.length) s.charts = [newChart('Rehearsal', 4, 11)];
+  s.charts.forEach(c => { c.seats = c.seats || {}; });
+  if (!s.charts.find(c => c.id === s.currentChartId)) s.currentChartId = s.charts[0].id;
+  s.rehearsals = s.rehearsals || {};
+  s.meta = s.meta || {lastChange:0, lastExport:0};
+  return s;
+}
+function load(){ try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.members) return normalize(s); } catch(e){} return blankState(); }
+function persist(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){ alert('Could not save on this device: ' + e.message); } }
+function commit(){ state.meta.lastChange = Date.now(); persist(); render(); }
+
+let state = load();
+const ui = { mode:'seating', selected:null, attDate:todayStr(), modal:null };
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+
+const member = id => state.members.find(m => m.id === id);
+const activeMembers = () => state.members.filter(m => m.active);
+const curChart = () => state.charts.find(c => c.id === state.currentChartId);
+const seatOf = (ch, mid) => Object.keys(ch.seats).find(k => ch.seats[k] === mid);
+
+// ---------- rendering ----------
+function render(){
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.mode === ui.mode));
+  $('#backup-dot').hidden = !(state.members.length && state.meta.lastChange > state.meta.lastExport);
+  const keep = {};
+  document.querySelectorAll('[data-scroll]').forEach(el => keep[el.dataset.scroll] = el.scrollTop);
+  const v = $('#view');
+  v.innerHTML = ui.mode === 'seating' ? seatingHTML() : ui.mode === 'attendance' ? attendanceHTML() : rosterHTML();
+  document.querySelectorAll('[data-scroll]').forEach(el => { if (keep[el.dataset.scroll] != null) el.scrollTop = keep[el.dataset.scroll]; });
+  if (ui.modal) ui.modal();
+}
+
+function chartOptions(selectedId){
+  return state.charts.map(c => `<option value="${c.id}" ${c.id===selectedId?'selected':''}>${esc(c.name)}</option>`).join('');
+}
+function legendHTML(){
+  return `<div class="legend">${ALLPARTS.map(p => `<span><i class="dot" style="--pc:${p.color}"></i>${p.name}</span>`).join('')}</div>`;
+}
+
+function seatingHTML(){
+  const ch = curChart();
+  const seated = new Set(Object.values(ch.seats));
+  const pool = activeMembers().filter(m => !seated.has(m.id)).sort(sortByPart);
+  let poolHTML;
+  if (!state.members.length){
+    poolHTML = `<p class="hint">No singers yet. Add them on the Roster tab, or restore a backup file.</p><button class="btn" data-action="import">Restore backup…</button>`;
+  } else if (!pool.length){
+    poolHTML = `<p class="hint">Everyone is seated.</p>`;
+  } else {
+    poolHTML = `<p class="hint">Drag a singer onto a seat, or tap a singer and then tap a seat.</p>` +
+      ALLPARTS.map(p => {
+        const list = pool.filter(m => m.part === p.id);
+        if (!list.length) return '';
+        return `<div class="ghead"><i class="dot" style="--pc:${p.color}"></i>${p.name}<span class="n">${list.length}</span></div>` +
+          list.map(m => `<div class="chip ${ui.selected===m.id?'sel':''}" data-member="${m.id}" style="--pc:${p.color}"><span class="fn">${esc(m.first)}</span><span class="ln">${esc(m.last)}</span></div>`).join('');
+      }).join('');
+  }
+  let grid = '';
+  for (let r = ch.rows - 1; r >= 0; r--){
+    grid += `<div class="rowlabel">Row ${r+1}</div>`;
+    for (let c = 0; c < ch.cols; c++){
+      const k = `${r},${c}`, m = ch.seats[k] && member(ch.seats[k]);
+      if (!m) { grid += `<div class="seat" data-seat="${k}"></div>`; continue; }
+      grid += `<div class="seat full" data-seat="${k}"><div class="occ ${ui.selected===m.id?'sel':''}" data-member="${m.id}" style="--pc:${partOf(m.part).color}"><span class="fn">${esc(m.first)}</span><span class="ln">${esc(m.last)}</span></div></div>`;
+    }
+  }
+  grid += `<div></div><div class="director">Director</div>`;
+  const total = activeMembers().length, nSeated = total - pool.length;
+  return `
+  <div class="toolbar">
+    <select data-change="chart" aria-label="Seating chart">${chartOptions(ch.id)}</select>
+    <button class="btn small" data-action="chart-new">New</button>
+    <button class="btn small" data-action="chart-rename">Rename</button>
+    <button class="btn small" data-action="chart-dup">Duplicate</button>
+    <button class="btn small danger" data-action="chart-delete" ${state.charts.length<2?'disabled':''}>Delete</button>
+    <div class="sep"></div>
+    <div class="stepper">Rows <button data-action="rows" data-d="-1" aria-label="Fewer rows">−</button><b>${ch.rows}</b><button data-action="rows" data-d="1" aria-label="More rows">+</button></div>
+    <div class="stepper">Seats per row <button data-action="cols" data-d="-1" aria-label="Fewer seats">−</button><b>${ch.cols}</b><button data-action="cols" data-d="1" aria-label="More seats">+</button></div>
+    <div class="spacer"></div>
+    <span class="hint" style="margin:0">${nSeated} of ${total} seated</span>
+    <button class="btn small" data-action="chart-clear">Clear seats</button>
+  </div>
+  <div class="body">
+    <aside class="pool" data-scroll="pool">${poolHTML}</aside>
+    <section class="stage" data-scroll="stage">
+      <div class="grid" style="--cols:${ch.cols}">${grid}</div>
+      ${legendHTML()}
+    </section>
+  </div>`;
+}
+
+function rehearsalChart(date){
+  const reh = state.rehearsals[date];
+  return (reh && state.charts.find(c => c.id === reh.chartId)) || curChart();
+}
+function countRecords(rec, ids){
+  const n = {P:0, L:0, E:0, A:0};
+  ids.forEach(id => { if (rec[id]) n[rec[id]]++; });
+  return n;
+}
+function countsHTML(n, unmarked){
+  return `<div class="counts">${Object.keys(STATUS).map(s => `<span class="cnt" style="--c:${STATUS_COLOR[s]}"><i></i>${STATUS[s]} ${n[s]}</span>`).join('')}${unmarked!=null?`<span class="cnt" style="--c:var(--line)"><i></i>Unmarked ${unmarked}</span>`:''}</div>`;
+}
+function acellHTML(m, rec){
+  const s = rec[m.id];
+  return `<button class="acell ${s?'s-'+s:''}" data-att="${m.id}" style="--pc:${partOf(m.part).color}"><span class="fn">${esc(m.first)}</span><span class="ln">${esc(m.last)}</span>${s?`<span class="st">${STATUS[s]}</span>`:''}</button>`;
+}
+
+function attendanceHTML(){
+  const date = ui.attDate, reh = state.rehearsals[date], rec = reh ? reh.records : {};
+  const ch = rehearsalChart(date);
+  const seated = new Set(Object.values(ch.seats));
+  const act = activeMembers();
+  const shownIds = new Set([...act.map(m => m.id), ...Object.keys(rec)]);
+  const n = countRecords(rec, [...shownIds]);
+  const unmarked = act.filter(m => !rec[m.id]).length;
+  const dates = Object.keys(state.rehearsals).sort();
+  const prev = [...dates].reverse().find(d => d < date), next = dates.find(d => d > date);
+
+  let grid = '';
+  for (let r = ch.rows - 1; r >= 0; r--){
+    grid += `<div class="rowlabel">Row ${r+1}</div>`;
+    for (let c = 0; c < ch.cols; c++){
+      const m = ch.seats[`${r},${c}`] && member(ch.seats[`${r},${c}`]);
+      grid += (m && m.active) ? acellHTML(m, rec) : `<div class="aempty"></div>`;
+    }
+  }
+  grid += `<div></div><div class="director">Director</div>`;
+  const off = state.members.filter(m => (m.active && !seated.has(m.id)) || (!m.active && rec[m.id])).sort(sortByPart);
+
+  return `
+  <div class="toolbar">
+    <button class="btn small" data-action="goto-date" data-date="${prev||''}" ${prev?'':'disabled'} aria-label="Previous rehearsal">‹ Prev</button>
+    <input type="date" value="${date}" data-change="att-date" aria-label="Rehearsal date">
+    <button class="btn small" data-action="goto-date" data-date="${next||''}" ${next?'':'disabled'} aria-label="Next rehearsal">Next ›</button>
+    <button class="btn small" data-action="goto-date" data-date="${todayStr()}" ${date===todayStr()?'disabled':''}>Today</button>
+    <div class="sep"></div>
+    <select data-change="att-chart" aria-label="Seating chart">${chartOptions(ch.id)}</select>
+    <div class="spacer"></div>
+    <button class="btn small" data-action="mark-rest" ${unmarked?'':'disabled'}>Mark unmarked Present</button>
+    <button class="btn small" data-action="history">History</button>
+    <button class="btn small" data-action="totals">Totals</button>
+  </div>
+  <div class="toolbar" style="padding-top:8px;padding-bottom:8px">
+    <b>${fmtDate(date, {weekday:'long', month:'long', day:'numeric', year:'numeric'})}</b>
+    <div class="spacer"></div>
+    ${countsHTML(n, unmarked)}
+  </div>
+  <section class="stage" data-scroll="att">
+    ${act.length ? `<p class="hint">Tap a singer to cycle: Present → Late → Excused → Absent → unmarked.</p>
+    <div class="grid" style="--cols:${ch.cols}">${grid}</div>
+    ${off.length ? `<div class="offchart"><div class="sectionhead">Not on this seating chart</div><div class="cells">${off.map(m => acellHTML(m, rec)).join('')}</div></div>` : ''}`
+    : `<p class="hint">No singers yet. Add them on the Roster tab first.</p>`}
+  </section>`;
+}
+
+function partSeg(m){
+  return `<div class="seg">${ALLPARTS.map(p => `<button data-action="set-part" data-id="${m.id}" data-part="${p.id}" class="${m.part===p.id?'on':''}" style="--pc:${p.color}">${p.name}</button>`).join('')}</div>`;
+}
+function rosterHTML(){
+  const act = activeMembers().sort(sortByName);
+  const former = state.members.filter(m => !m.active).sort(sortByName);
+  const counts = ALLPARTS.map(p => ({p, n: act.filter(m => m.part === p.id).length})).filter(x => x.n || x.p.id);
+  return `
+  <div class="toolbar">
+    <form class="addform" data-submit="add-member">
+      <input name="first" placeholder="First name" required autocomplete="off">
+      <input name="last" placeholder="Last name" required autocomplete="off">
+      <select name="part">${ALLPARTS.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}</select>
+      <button class="btn primary">Add singer</button>
+    </form>
+    <div class="spacer"></div>
+    <div class="counts"><span class="cnt" style="--c:var(--ink)"><i></i>${act.length} singers</span>${counts.map(x => `<span class="cnt" style="--c:${x.p.color}"><i></i>${x.p.name} ${x.n}</span>`).join('')}</div>
+  </div>
+  <div class="scroll" data-scroll="roster">
+    ${act.length ? '' : `<p class="hint">No singers yet. Add them above, or restore a backup file with the Backup button.</p>`}
+    ${act.map(m => `<div class="rrow"><i class="dot" style="--pc:${partOf(m.part).color}"></i><button class="name" data-action="edit-member" data-id="${m.id}">${esc(m.last)}, ${esc(m.first)}</button>${partSeg(m)}<button class="btn small danger" data-action="remove-member" data-id="${m.id}">Remove</button></div>`).join('')}
+    ${former.length ? `<div class="sectionhead">Former members (attendance history kept)</div>` + former.map(m => `<div class="rrow"><i class="dot" style="--pc:${partOf(m.part).color}"></i><span class="name" style="color:var(--muted)">${esc(m.last)}, ${esc(m.first)}</span><button class="btn small" data-action="restore-member" data-id="${m.id}">Restore</button><button class="btn small danger" data-action="purge-member" data-id="${m.id}">Delete forever</button></div>`).join('') : ''}
+  </div>`;
+}
+
+// ---------- modals ----------
+function openModal(html, wide){
+  $('#modal-root').innerHTML = `<div class="backdrop"><div class="modal ${wide?'wide':''}" data-scroll="modal">${html}</div></div>`;
+}
+function showModal(fn){ ui.modal = fn; fn(); }
+function closeModal(){ ui.modal = null; $('#modal-root').innerHTML = ''; }
+
+function memberModal(id){
+  const m = member(id); if (!m) return closeModal();
+  const seat = seatOf(curChart(), id);
+  openModal(`<h2>${esc(m.first)} ${esc(m.last)}</h2>
+    <div class="label">Voice part</div>${partSeg(m)}
+    <div class="modal-actions">${seat ? `<button class="btn danger" data-action="unseat" data-id="${id}">Remove from seat</button>` : ''}<button class="btn primary" data-action="close">Done</button></div>`);
+}
+function editMemberModal(id){
+  const m = member(id);
+  openModal(`<h2>Edit singer</h2>
+    <form data-submit="save-member" data-id="${id}">
+      <div class="field"><input name="first" value="${esc(m.first)}" placeholder="First name" required><input name="last" value="${esc(m.last)}" placeholder="Last name" required></div>
+      <div class="modal-actions"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Save</button></div>
+    </form>`);
+}
+function historyModal(){
+  const dates = Object.keys(state.rehearsals).sort().reverse();
+  openModal(`<h2>Past rehearsals</h2>
+    ${dates.length ? dates.map(d => {
+      const rec = state.rehearsals[d].records;
+      return `<div class="hrow"><b>${fmtDate(d)}</b>${countsHTML(countRecords(rec, Object.keys(rec)))}<div class="spacer"></div><button class="btn small" data-action="open-date" data-date="${d}">Open</button><button class="btn small danger" data-action="delete-date" data-date="${d}">Delete</button></div>`;
+    }).join('') : `<p class="hint">No attendance recorded yet.</p>`}
+    <div class="modal-actions"><button class="btn primary" data-action="close">Close</button></div>`, true);
+}
+function totalsRows(){
+  const dates = Object.keys(state.rehearsals);
+  const people = state.members.filter(m => m.active || dates.some(d => state.rehearsals[d].records[m.id])).sort(sortByPart);
+  return people.map(m => {
+    const n = {P:0, L:0, E:0, A:0};
+    dates.forEach(d => { const s = state.rehearsals[d].records[m.id]; if (s) n[s]++; });
+    const marked = n.P + n.L + n.E + n.A;
+    return {m, n, pct: marked ? Math.round((n.P + n.L) / marked * 100) : null};
+  });
+}
+function totalsModal(){
+  const nReh = Object.keys(state.rehearsals).length;
+  openModal(`<h2>Attendance totals · ${nReh} rehearsal${nReh===1?'':'s'}</h2>
+    <table><thead><tr><th>Singer</th><th>Part</th><th>Present</th><th>Late</th><th>Excused</th><th>Absent</th><th>Attended</th></tr></thead><tbody>
+    ${totalsRows().map(({m, n, pct}) => `<tr><td>${esc(m.last)}, ${esc(m.first)}${m.active?'':' <span class="hint">(former)</span>'}</td><td><i class="dot" style="--pc:${partOf(m.part).color}"></i></td><td>${n.P}</td><td>${n.L}</td><td>${n.E}</td><td style="${n.A?'color:var(--A);font-weight:700':''}">${n.A}</td><td>${pct==null?'—':pct+'%'}</td></tr>`).join('')}
+    </tbody></table>
+    <p class="hint" style="margin-top:12px">"Attended" counts Present and Late, out of every rehearsal where the singer was marked.</p>
+    <div class="modal-actions"><button class="btn primary" data-action="close">Close</button></div>`, true);
+}
+function backupModal(){
+  const last = state.meta.lastExport;
+  const dirty = state.meta.lastChange > last;
+  openModal(`<h2>Backup &amp; export</h2>
+    <div class="status-msg">${last ? `Last backup: ${new Date(last).toLocaleString()}.` : 'No backup saved yet.'} ${dirty && state.members.length ? '<b>You have changes since then.</b>' : last ? 'Everything is backed up.' : ''}</div>
+    <div class="stack">
+      <button class="btn" data-action="export-json">Save backup to Files…<small>Everything: roster, seating charts and attendance. In the share sheet, choose <b>Save to Files</b> and then an iCloud Drive folder.</small></button>
+      <button class="btn" data-action="export-csv">Export attendance spreadsheet (CSV)…<small>One row per singer and one column per rehearsal. Opens in Numbers or Excel.</small></button>
+      <button class="btn" data-action="import">Restore from backup…<small>Replaces everything on this device with a backup file.</small></button>
+    </div>
+    <div class="modal-actions"><button class="btn primary" data-action="close">Close</button></div>`);
+}
+
+// ---------- mutations ----------
+function placeInSeat(mid, key){
+  const ch = curChart();
+  const from = seatOf(ch, mid), occupant = ch.seats[key];
+  if (occupant === mid) return;
+  if (from) delete ch.seats[from];
+  ch.seats[key] = mid;
+  if (occupant && from) ch.seats[from] = occupant;
+  ui.selected = null;
+  commit();
+}
+function unseat(mid){
+  const ch = curChart(), k = seatOf(ch, mid);
+  if (k) { delete ch.seats[k]; commit(); }
+}
+function resizeChart(dr, dc){
+  const ch = curChart();
+  ch.rows = Math.min(12, Math.max(1, ch.rows + dr));
+  ch.cols = Math.min(24, Math.max(1, ch.cols + dc));
+  Object.keys(ch.seats).forEach(k => { const [r,c] = k.split(',').map(Number); if (r >= ch.rows || c >= ch.cols) delete ch.seats[k]; });
+  commit();
+}
+function cycleStatus(mid){
+  const date = ui.attDate;
+  let reh = state.rehearsals[date];
+  if (!reh) reh = state.rehearsals[date] = {chartId: rehearsalChart(date).id, records:{}};
+  const next = CYCLE[(CYCLE.indexOf(reh.records[mid]) + 1) % CYCLE.length];
+  if (next) reh.records[mid] = next; else delete reh.records[mid];
+  if (!Object.keys(reh.records).length) delete state.rehearsals[date];
+  commit();
+}
+
+// ---------- files ----------
+async function saveFile(name, text, type){
+  const blob = new Blob([text], {type});
+  try {
+    const file = new File([blob], name, {type});
+    if (navigator.canShare && navigator.canShare({files:[file]})) {
+      await navigator.share({files:[file]});
+      return true;
+    }
+  } catch(e) { if (e.name === 'AbortError') return false; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  return true;
+}
+function csvCell(v){ v = String(v ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+function attendanceCSV(){
+  const dates = Object.keys(state.rehearsals).sort();
+  const header = ['Last Name','First Name','Part','Member', ...dates, 'Present','Late','Excused','Absent','Attended %'];
+  const rows = totalsRows().map(({m, n, pct}) => [m.last, m.first, partOf(m.part).name, m.active ? 'Current' : 'Former',
+    ...dates.map(d => STATUS[state.rehearsals[d].records[m.id]] || ''), n.P, n.L, n.E, n.A, pct == null ? '' : pct]);
+  return [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+}
+$('#import-input').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    if (!Array.isArray(data.members) || !Array.isArray(data.charts)) throw new Error('This file is not a Men\'s Ensemble backup.');
+    const when = data.exportedAt ? ` saved ${new Date(data.exportedAt).toLocaleString()}` : '';
+    const msg = `Restore this backup${when}?\n\n${data.members.length} singers, ${data.charts.length} seating chart(s), ${Object.keys(data.rehearsals||{}).length} rehearsal(s).` +
+      (state.members.length ? '\n\nThis replaces everything currently on this device.' : '');
+    if (!confirm(msg)) return;
+    delete data.exportedAt;
+    state = normalize(data);
+    state.meta.lastExport = state.meta.lastChange = Date.now();
+    persist(); closeModal(); render();
+  } catch(err) { alert('Could not restore: ' + err.message); }
+});
+
+// ---------- events ----------
+document.addEventListener('click', async e => {
+  const t = e.target;
+  if (t.classList.contains('backdrop')) return closeModal();
+  const tab = t.closest('.tabs button');
+  if (tab) { ui.mode = tab.dataset.mode; ui.selected = null; return render(); }
+
+  const att = t.closest('[data-att]');
+  if (att) return cycleStatus(att.dataset.att);
+
+  // tap an empty seat while a singer is selected
+  const seat = t.closest('[data-seat]');
+  if (seat && !t.closest('[data-member]') && ui.selected) return placeInSeat(ui.selected, seat.dataset.seat);
+
+  const a = t.closest('[data-action]'); if (!a) return;
+  const ch = curChart(), id = a.dataset.id;
+  switch (a.dataset.action){
+    case 'close': closeModal(); break;
+    case 'backup': showModal(backupModal); break;
+    case 'import': $('#import-input').click(); break;
+    case 'export-json': {
+      const ok = await saveFile(`Mens Ensemble Backup ${todayStr()}.json`, JSON.stringify({...state, exportedAt: Date.now()}, null, 1), 'application/json');
+      if (ok) { state.meta.lastExport = Date.now(); persist(); render(); }
+      break;
+    }
+    case 'export-csv': await saveFile(`Mens Ensemble Attendance ${todayStr()}.csv`, attendanceCSV(), 'text/csv'); break;
+    case 'chart-new': {
+      const name = prompt('Name for the new seating chart:', ''); if (!name) break;
+      const c = newChart(name.trim(), ch.rows, ch.cols); state.charts.push(c); state.currentChartId = c.id; commit(); break;
+    }
+    case 'chart-rename': { const name = prompt('Rename seating chart:', ch.name); if (name) { ch.name = name.trim(); commit(); } break; }
+    case 'chart-dup': {
+      const name = prompt('Name for the copy:', ch.name + ' copy'); if (!name) break;
+      const c = {...newChart(name.trim(), ch.rows, ch.cols), seats:{...ch.seats}}; state.charts.push(c); state.currentChartId = c.id; commit(); break;
+    }
+    case 'chart-delete':
+      if (state.charts.length > 1 && confirm(`Delete the seating chart "${ch.name}"? Attendance records are not affected.`)) {
+        state.charts = state.charts.filter(c => c !== ch); state.currentChartId = state.charts[0].id; commit();
+      }
+      break;
+    case 'chart-clear': if (confirm(`Remove everyone from the seats in "${ch.name}"?`)) { ch.seats = {}; commit(); } break;
+    case 'rows': resizeChart(+a.dataset.d, 0); break;
+    case 'cols': resizeChart(0, +a.dataset.d); break;
+    case 'set-part': member(id).part = a.dataset.part; commit(); break;
+    case 'unseat': closeModal(); unseat(id); break;
+    case 'edit-member': showModal(() => editMemberModal(id)); break;
+    case 'remove-member': {
+      const m = member(id);
+      if (confirm(`Remove ${m.first} ${m.last} from the roster?\n\nThey'll be taken off every seating chart. Their past attendance is kept, and you can restore them later.`)) {
+        m.active = false; state.charts.forEach(c => { const k = seatOf(c, id); if (k) delete c.seats[k]; }); commit();
+      }
+      break;
+    }
+    case 'restore-member': member(id).active = true; commit(); break;
+    case 'purge-member': {
+      const m = member(id);
+      if (confirm(`Permanently delete ${m.first} ${m.last} and all of their attendance records? This cannot be undone.`)) {
+        state.members = state.members.filter(x => x.id !== id);
+        Object.keys(state.rehearsals).forEach(d => { delete state.rehearsals[d].records[id]; if (!Object.keys(state.rehearsals[d].records).length) delete state.rehearsals[d]; });
+        commit();
+      }
+      break;
+    }
+    case 'goto-date': if (a.dataset.date) { ui.attDate = a.dataset.date; render(); } break;
+    case 'mark-rest': {
+      let reh = state.rehearsals[ui.attDate];
+      if (!reh) reh = state.rehearsals[ui.attDate] = {chartId: rehearsalChart(ui.attDate).id, records:{}};
+      activeMembers().forEach(m => { if (!reh.records[m.id]) reh.records[m.id] = 'P'; });
+      commit(); break;
+    }
+    case 'history': showModal(historyModal); break;
+    case 'totals': showModal(totalsModal); break;
+    case 'open-date': ui.attDate = a.dataset.date; closeModal(); render(); break;
+    case 'delete-date':
+      if (confirm(`Delete all attendance for ${fmtDate(a.dataset.date)}?`)) { delete state.rehearsals[a.dataset.date]; commit(); }
+      break;
+  }
+});
+
+document.addEventListener('change', e => {
+  const t = e.target;
+  switch (t.dataset.change){
+    case 'chart': state.currentChartId = t.value; ui.selected = null; commit(); break;
+    case 'att-date': if (t.value) { ui.attDate = t.value; render(); } break;
+    case 'att-chart': {
+      state.currentChartId = t.value;
+      if (state.rehearsals[ui.attDate]) state.rehearsals[ui.attDate].chartId = t.value;
+      commit(); break;
+    }
+  }
+});
+
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  const f = e.target, d = Object.fromEntries(new FormData(f));
+  const first = (d.first || '').trim(), last = (d.last || '').trim();
+  if (!first || !last) return;
+  if (f.dataset.submit === 'add-member') {
+    state.members.push({id:uid(), first, last, part:d.part || '', active:true});
+    commit();
+    const inp = $('.addform input[name=first]'); if (inp) inp.focus();
+  } else if (f.dataset.submit === 'save-member') {
+    const m = member(f.dataset.id); m.first = first; m.last = last; closeModal(); commit();
+  }
+});
+
+// ---------- drag & drop (pointer events, works with touch and mouse) ----------
+let drag = null;
+document.addEventListener('pointerdown', e => {
+  if (ui.mode !== 'seating' || (e.button && e.button !== 0)) return;
+  const el = e.target.closest('[data-member]'); if (!el) return;
+  const seatEl = el.closest('[data-seat]');
+  drag = { id: el.dataset.member, from: seatEl ? seatEl.dataset.seat : null, el, pid: e.pointerId,
+           x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, started: false,
+           inList: !!el.closest('.pool'), touch: e.pointerType !== 'mouse' };
+  // In the scrolling list, a touch must either hold briefly or move sideways to start a drag (so vertical swipes still scroll).
+  if (drag.touch && drag.inList) drag.timer = setTimeout(() => { if (drag && !drag.started) startDrag(); }, 200);
+});
+window.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.pid) return;
+  drag.x = e.clientX; drag.y = e.clientY;
+  const dx = drag.x - drag.x0, dy = drag.y - drag.y0, dist = Math.hypot(dx, dy);
+  if (!drag.started) {
+    if (drag.touch && drag.inList) { if (dist > 8) { if (Math.abs(dx) > Math.abs(dy)) startDrag(); else cancelDrag(); } }
+    else if (dist > 6) startDrag();
+    return;
+  }
+  moveGhost();
+});
+window.addEventListener('pointerup', e => {
+  if (!drag || e.pointerId !== drag.pid) return;
+  const d = drag; clearTimeout(d.timer);
+  endDrag();
+  if (d.started) {
+    const target = document.elementFromPoint(e.clientX, e.clientY);
+    const seatEl = target && target.closest('[data-seat]');
+    if (seatEl) placeInSeat(d.id, seatEl.dataset.seat);
+    else if (target && target.closest('.pool')) { if (d.from) unseat(d.id); }
+  } else {
+    tapMember(d.id, d.from);
+  }
+});
+window.addEventListener('pointercancel', e => { if (drag && e.pointerId === drag.pid) cancelDrag(); });
+document.addEventListener('touchmove', e => { if (drag && drag.started) e.preventDefault(); }, {passive:false});
+
+function startDrag(){
+  drag.started = true;
+  const r = drag.el.getBoundingClientRect();
+  const g = drag.el.cloneNode(true);
+  g.classList.add('ghost'); g.classList.remove('sel');
+  g.style.width = r.width + 'px'; g.style.height = r.height + 'px';
+  document.body.appendChild(g);
+  drag.ghost = g; drag.w = r.width; drag.h = r.height;
+  drag.el.classList.add('dragging');
+  if (ui.selected) { ui.selected = null; document.querySelectorAll('.sel').forEach(x => x.classList.remove('sel')); }
+  moveGhost();
+}
+function moveGhost(){
+  drag.ghost.style.transform = `translate(${drag.x - drag.w/2}px, ${drag.y - drag.h/2}px) scale(1.05)`;
+  const t = document.elementFromPoint(drag.x, drag.y);
+  const s = t && t.closest('[data-seat]');
+  document.querySelectorAll('.seat.drop').forEach(x => { if (x !== s) x.classList.remove('drop'); });
+  if (s) s.classList.add('drop');
+}
+function endDrag(){
+  if (!drag) return;
+  clearTimeout(drag.timer);
+  if (drag.ghost) drag.ghost.remove();
+  drag.el.classList.remove('dragging');
+  document.querySelectorAll('.seat.drop').forEach(x => x.classList.remove('drop'));
+  drag = null;
+}
+function cancelDrag(){ endDrag(); }
+function tapMember(id, fromSeat){
+  if (ui.selected === id) { ui.selected = null; return render(); }
+  if (fromSeat && ui.selected) return placeInSeat(ui.selected, fromSeat); // swap selected singer into this seat
+  if (fromSeat) return showModal(() => memberModal(id));
+  ui.selected = id; render();
+}
+
+// ---------- start ----------
+render();
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>

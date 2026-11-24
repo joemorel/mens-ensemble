@@ -1,0 +1,5 @@
+# Roster and backups contain singers' names — never publish them.
+*.json
+!manifest.json
+.claude/
+.DS_Store
