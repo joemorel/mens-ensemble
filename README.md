@@ -2,7 +2,7 @@
 
 Seating chart and attendance web app for iPad, synced through Firebase.
 
-- App: https://mens-ensemble-hst13.web.app (open in Safari, then Share → Add to Home Screen)
+- App: https://mens-ensemble-hst13.firebaseapp.com (open in Safari, then Share → Add to Home Screen)
 - Sign in with Google. Only the owner and the people the owner adds in **Settings** can read or change data.
 
 ## Deploying
