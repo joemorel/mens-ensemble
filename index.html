@@ -60,7 +60,15 @@ main{flex:1;min-height:0;display:flex;flex-direction:column}
 .ghead:first-of-type{margin-top:4px}
 .ghead span.n{margin-left:auto;font-weight:600}
 .dot{width:11px;height:11px;border-radius:50%;background:var(--pc);flex:none;display:inline-block}
-.chip{display:flex;flex-direction:column;padding:7px 10px;border-radius:9px;background:var(--empty);margin-bottom:6px;border-left:6px solid var(--pc);touch-action:pan-y}
+.av{width:38px;height:38px;border-radius:50%;object-fit:cover;flex:none;border:2px solid rgba(255,255,255,.9);background:#fff;margin-bottom:3px}
+.chip .av{width:34px;height:34px;margin:0;border-color:var(--pc)}
+.chip .tx{display:flex;flex-direction:column;min-width:0}
+.rrow .av{width:40px;height:40px;margin:0;border-color:var(--pc)}
+.avbtn{border:0;background:none;padding:0;display:flex}
+.avbtn .dot{width:40px;height:40px;border:2px dashed var(--pc);background:none}
+.bigav{width:132px;height:132px;border-radius:50%;object-fit:cover;display:block;margin:0 auto 12px;border:4px solid var(--pc)}
+.bigav.none{display:flex;align-items:center;justify-content:center;background:var(--empty);color:var(--muted);font-size:13px;border-style:dashed}
+.chip{display:flex;flex-direction:row;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;background:var(--empty);margin-bottom:6px;border-left:6px solid var(--pc);touch-action:pan-y}
 .chip .fn{font-weight:700}
 .chip .ln{font-size:12px;color:var(--muted)}
 .chip.sel,.occ.sel{outline:3px solid var(--hi);outline-offset:1px}
@@ -145,6 +153,7 @@ td:first-child,th:first-child{text-align:left}
 <main id="view"></main>
 <div id="modal-root"></div>
 <input type="file" id="import-input" accept=".json,application/json" hidden>
+<input type="file" id="photo-input" accept="image/*" hidden>
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
@@ -173,6 +182,8 @@ const accessRef = doc(db, 'access', 'main');
 const mainRef = doc(db, 'ensemble', 'main');
 const rehCol = collection(db, 'ensemble', 'main', 'rehearsals');
 const rehRef = date => doc(rehCol, date);
+const photoCol = collection(db, 'ensemble', 'main', 'photos');
+const photoRef = id => doc(photoCol, id);
 
 // ---------- constants ----------
 const PARTS = [
@@ -213,7 +224,7 @@ function cleanCharts(list){
 }
 
 const prefs = readJSON(PREFS_KEY) || {};
-let state = {members:[], charts:cleanCharts([]), rehearsals:{}, currentChartId:prefs.currentChartId};
+let state = {members:[], charts:cleanCharts([]), rehearsals:{}, photos:{}, currentChartId:prefs.currentChartId};
 const session = {phase:'loading', user:null, email:'', access:null, isOwner:false, error:'', mainLoaded:false, rehLoaded:false, pendingMain:false, pendingReh:false, fromCache:false, unsubs:[], legacyAsked:false};
 const ui = { mode: prefs.mode || 'seating', selected:null, attDate:todayStr(), modal:null, modalLive:false };
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
@@ -261,6 +272,7 @@ async function importData(data){
   Object.entries(rehearsals).forEach(([date, r]) => {
     if (r && r.records && Object.keys(r.records).length) ops.push(b => b.set(rehRef(date), {chartId: r.chartId || charts[0].id, records: r.records}));
   });
+  if (data.photos) Object.entries(data.photos).forEach(([mid, p]) => { if (typeof p === 'string' && p.startsWith('data:image/')) ops.push(b => b.set(photoRef(mid), {data: p})); });
   for (let i = 0; i < ops.length; i += 400) { const b = writeBatch(db); ops.slice(i, i+400).forEach(op => op(b)); await b.commit(); }
   setCurrentChart(charts[0].id);
 }
@@ -269,7 +281,7 @@ async function importData(data){
 function unsubscribeAll(){ session.unsubs.forEach(u => u()); session.unsubs = []; }
 onAuthStateChanged(auth, async user => {
   unsubscribeAll();
-  state = {members:[], charts:cleanCharts([]), rehearsals:{}, currentChartId:prefs.currentChartId};
+  state = {members:[], charts:cleanCharts([]), rehearsals:{}, photos:{}, currentChartId:prefs.currentChartId};
   Object.assign(session, {user, email: user ? (user.email || '').toLowerCase() : '', access:null, isOwner:false, mainLoaded:false, rehLoaded:false});
   if (!user) { session.phase = 'signin'; return render(); }
   session.phase = 'loading'; render();
@@ -312,6 +324,15 @@ function subscribe(){
     session.rehLoaded = true;
     maybeReady();
   }, e => { session.phase = 'error'; session.error = e.message; render(); }));
+  subscribePhotos();
+}
+function subscribePhotos(){
+  session.unsubs.push(onSnapshot(photoCol, qs => {
+    const p = {};
+    qs.forEach(d => { if (d.data().data) p[d.id] = d.data().data; });
+    state.photos = p;
+    render();
+  }, () => {}));
 }
 function maybeReady(){
   if (session.mainLoaded && session.rehLoaded) session.phase = 'ready';
@@ -378,6 +399,7 @@ function deniedHTML(){
     <button class="btn" data-action="signout">Sign in with a different account</button></div></div>`;
 }
 
+const avatar = m => state.photos[m.id] ? `<img class="av" src="${state.photos[m.id]}" alt="">` : '';
 function chartOptions(selectedId){
   return state.charts.map(c => `<option value="${c.id}" ${c.id===selectedId?'selected':''}>${esc(c.name)}</option>`).join('');
 }
@@ -400,7 +422,7 @@ function seatingHTML(){
         const list = pool.filter(m => m.part === p.id);
         if (!list.length) return '';
         return `<div class="ghead"><i class="dot" style="--pc:${p.color}"></i>${p.name}<span class="n">${list.length}</span></div>` +
-          list.map(m => `<div class="chip ${ui.selected===m.id?'sel':''}" data-member="${m.id}" style="--pc:${p.color}"><span class="fn">${esc(m.first)}</span><span class="ln">${esc(m.last)}</span></div>`).join('');
+          list.map(m => `<div class="chip ${ui.selected===m.id?'sel':''}" data-member="${m.id}" style="--pc:${p.color}">${avatar(m)}<div class="tx"><span class="fn">${esc(m.first)}</span><span class="ln">${esc(m.last)}</span></div></div>`).join('');
       }).join('');
   }
   let grid = '';
@@ -409,7 +431,7 @@ function seatingHTML(){
     for (let c = 0; c < ch.cols; c++){
       const k = `${r},${c}`, m = ch.seats[k] && member(ch.seats[k]);
       if (!m || !m.active) { grid += `<div class="seat" data-seat="${k}"></div>`; continue; }
-      grid += `<div class="seat full" data-seat="${k}"><div class="occ ${ui.selected===m.id?'sel':''}" data-member="${m.id}" style="--pc:${partOf(m.part).color}"><span class="fn">${esc(m.first)}</span><span class="ln">${esc(m.last)}</span></div></div>`;
+      grid += `<div class="seat full" data-seat="${k}"><div class="occ ${ui.selected===m.id?'sel':''}" data-member="${m.id}" style="--pc:${partOf(m.part).color}">${avatar(m)}<span class="fn">${esc(m.first)}</span><span class="ln">${esc(m.last)}</span></div></div>`;
     }
   }
   grid += `<div></div><div class="director">Director</div>`;
@@ -451,7 +473,7 @@ function countsHTML(n, unmarked){
 }
 function acellHTML(m, rec){
   const s = rec[m.id];
-  return `<button class="acell ${s?'s-'+s:''}" data-att="${m.id}" style="--pc:${partOf(m.part).color}"><span class="fn">${esc(m.first)}</span><span class="ln">${esc(m.last)}</span>${s?`<span class="st">${STATUS[s]}</span>`:''}</button>`;
+  return `<button class="acell ${s?'s-'+s:''}" data-att="${m.id}" style="--pc:${partOf(m.part).color}">${avatar(m)}<span class="fn">${esc(m.first)}</span><span class="ln">${esc(m.last)}</span>${s?`<span class="st">${STATUS[s]}</span>`:''}</button>`;
 }
 
 function attendanceHTML(){
@@ -522,7 +544,7 @@ function rosterHTML(){
   </div>
   <div class="scroll" data-scroll="roster">
     ${act.length ? '' : `<p class="hint">No singers yet. Add them above, or restore a backup file from Settings.</p>`}
-    ${act.map(m => `<div class="rrow"><i class="dot" style="--pc:${partOf(m.part).color}"></i><button class="name" data-action="edit-member" data-id="${m.id}">${esc(m.last)}, ${esc(m.first)}</button>${partSeg(m)}<button class="btn small danger" data-action="remove-member" data-id="${m.id}">Remove</button></div>`).join('')}
+    ${act.map(m => `<div class="rrow" style="--pc:${partOf(m.part).color}"><button class="avbtn" data-action="member" data-id="${m.id}" aria-label="Photo">${avatar(m) || '<i class="dot"></i>'}</button><button class="name" data-action="edit-member" data-id="${m.id}">${esc(m.last)}, ${esc(m.first)}</button>${partSeg(m)}<button class="btn small danger" data-action="remove-member" data-id="${m.id}">Remove</button></div>`).join('')}
     ${former.length ? `<div class="sectionhead">Former members (attendance history kept)</div>` + former.map(m => `<div class="rrow"><i class="dot" style="--pc:${partOf(m.part).color}"></i><span class="name" style="color:var(--muted)">${esc(m.last)}, ${esc(m.first)}</span><button class="btn small" data-action="restore-member" data-id="${m.id}">Restore</button><button class="btn small danger" data-action="purge-member" data-id="${m.id}">Delete forever</button></div>`).join('') : ''}
   </div>`;
 }
@@ -538,8 +560,12 @@ function closeModal(){ ui.modal = null; $('#modal-root').innerHTML = ''; }
 function memberModal(id){
   const m = member(id); if (!m) return closeModal();
   const seat = seatOf(curChart(), id);
-  openModal(`<h2>${esc(m.first)} ${esc(m.last)}</h2>
+  const photo = state.photos[id];
+  openModal(`<div style="--pc:${partOf(m.part).color}">${photo ? `<img class="bigav" src="${photo}" alt="">` : `<div class="bigav none">No photo</div>`}</div>
+    <h2 style="text-align:center">${esc(m.first)} ${esc(m.last)}</h2>
     <div class="label">Voice part</div>${partSeg(m)}
+    <div class="label">Photo</div>
+    <div class="seg"><button data-action="photo-pick" data-id="${id}">${photo ? 'Change photo…' : 'Take or choose photo…'}</button>${photo ? `<button data-action="photo-remove" data-id="${id}">Remove photo</button>` : ''}</div>
     <div class="modal-actions">${seat ? `<button class="btn danger" data-action="unseat" data-id="${id}">Remove from seat</button>` : ''}<button class="btn primary" data-action="close">Done</button></div>`);
 }
 function editMemberModal(id){
@@ -667,6 +693,43 @@ $('#import-input').addEventListener('change', async e => {
   } catch(err) { alert('Could not restore: ' + err.message); }
 });
 
+// ---------- photos ----------
+// Shrink any image to a 200px square JPEG (about 10 KB), cropped toward the top where faces usually are.
+async function makeThumb(src){
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  await new Promise((ok, fail) => { img.onload = ok; img.onerror = () => fail(new Error('Could not read that image.')); img.src = src; });
+  const s = Math.min(img.naturalWidth, img.naturalHeight), size = 200;
+  const sx = (img.naturalWidth - s) / 2, sy = (img.naturalHeight - s) * 0.25;
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  c.getContext('2d').drawImage(img, sx, sy, s, s, 0, 0, size, size);
+  return c.toDataURL('image/jpeg', 0.82);
+}
+async function savePhoto(id, src){
+  const data = await makeThumb(src);
+  state.photos[id] = data;
+  await setDoc(photoRef(id), {data, updatedAt: serverTimestamp()});
+}
+$('#photo-input').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  const id = ui.photoFor; if (!f || !id) return;
+  const url = URL.createObjectURL(f);
+  try { await savePhoto(id, url); render(); } catch (err) { alert('Could not save the photo: ' + err.message); }
+  finally { URL.revokeObjectURL(url); }
+});
+// Used once to bring in photos from the school roster: [["First Last", imageUrl], ...]
+window.ensembleImportPhotos = async list => {
+  const byName = new Map(state.members.map(m => [`${m.first} ${m.last}`.toLowerCase(), m]));
+  const done = [], missing = [];
+  for (const [name, url] of list) {
+    const m = byName.get(name.toLowerCase());
+    if (!m) { missing.push(name); continue; }
+    try { await savePhoto(m.id, url); done.push(name); } catch (e) { missing.push(name + ' (' + e.message + ')'); }
+  }
+  render();
+  return {saved: done.length, missing};
+};
+
 // ---------- events ----------
 document.addEventListener('click', async e => {
   const t = e.target;
@@ -690,7 +753,7 @@ document.addEventListener('click', async e => {
     case 'settings': showModal(settingsModal, false); break;
     case 'import': $('#import-input').click(); break;
     case 'export-json':
-      await saveFile(`Mens Ensemble Backup ${todayStr()}.json`, JSON.stringify({members: state.members, charts: state.charts, rehearsals: state.rehearsals, exportedAt: Date.now()}, null, 1), 'application/json');
+      await saveFile(`Mens Ensemble Backup ${todayStr()}.json`, JSON.stringify({members: state.members, charts: state.charts, rehearsals: state.rehearsals, photos: state.photos, exportedAt: Date.now()}, null, 1), 'application/json');
       break;
     case 'export-csv': await saveFile(`Mens Ensemble Attendance ${todayStr()}.csv`, attendanceCSV(), 'text/csv'); break;
     case 'remove-editor': {
@@ -719,6 +782,11 @@ document.addEventListener('click', async e => {
     case 'cols': resizeChart(0, +a.dataset.d); break;
     case 'set-part': member(id).part = a.dataset.part; commit(); break;
     case 'unseat': closeModal(); unseat(id); break;
+    case 'member': showModal(() => memberModal(id)); break;
+    case 'photo-pick': ui.photoFor = id; $('#photo-input').click(); break;
+    case 'photo-remove':
+      if (confirm('Remove this photo?')) { delete state.photos[id]; deleteDoc(photoRef(id)).catch(writeFailed); render(); }
+      break;
     case 'edit-member': showModal(() => editMemberModal(id), false); break;
     case 'remove-member': {
       const m = member(id);
@@ -732,6 +800,7 @@ document.addEventListener('click', async e => {
       const m = member(id);
       if (confirm(`Permanently delete ${m.first} ${m.last} and all of their attendance records? This cannot be undone.`)) {
         state.members = state.members.filter(x => x.id !== id);
+        if (state.photos[id]) { delete state.photos[id]; deleteDoc(photoRef(id)).catch(writeFailed); }
         Object.keys(state.rehearsals).forEach(d => { if ((state.rehearsals[d].records || {})[id]) setStatuses(d, {[id]: null}); });
         commit();
       }
