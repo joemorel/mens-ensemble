@@ -3,3 +3,7 @@
 !manifest.json
 .claude/
 .DS_Store
+!firebase.json
+firestore.rules
+.firebase/
+*.log

@@ -118,25 +118,61 @@ th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:center}
 th{font-size:12px;color:var(--muted);text-transform:uppercase;position:sticky;top:-22px;background:var(--panel)}
 td:first-child,th:first-child{text-align:left}
 .status-msg{padding:10px 12px;border-radius:10px;background:var(--empty);font-size:14px;margin-bottom:14px}
+.sync{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap}
+.sync.warn{color:#d97706}
+.center{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
+.card{background:var(--panel);border-radius:18px;padding:32px;max-width:440px;width:100%;text-align:center;box-shadow:0 6px 30px rgba(0,0,0,.08)}
+.card img{width:72px;height:72px;border-radius:16px;margin-bottom:12px}
+.card p{color:var(--muted)}
+.card .btn{margin-top:10px;padding:12px 20px;font-size:16px}
+.erow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.erow span{flex:1;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:900px){ .pool{width:180px} .tabs button{padding:8px 12px} h1{display:none} }
 </style>
 </head>
 <body>
 <header>
   <h1>Men's Ensemble</h1>
-  <nav class="tabs">
+  <nav class="tabs" id="tabs" hidden>
     <button data-mode="seating">Seating</button>
     <button data-mode="attendance">Attendance</button>
     <button data-mode="roster">Roster</button>
   </nav>
-  <button class="btn" data-action="backup">Backup<span id="backup-dot" class="dot-alert" hidden></span></button>
+  <span class="spacer" id="tabs-spacer"></span>
+  <span class="sync" id="sync"></span>
+  <button class="btn" data-action="settings" id="settings-btn" hidden>Settings</button>
 </header>
 <main id="view"></main>
 <div id="modal-root"></div>
 <input type="file" id="import-input" accept=".json,application/json" hidden>
 
-<script>
-'use strict';
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, deleteField, FieldPath, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js';
+
+// ---------- Firebase setup ----------
+const firebaseConfig = {
+  "apiKey": "AIzaSyA1jK5qeh1fNoot1facw_TEYUI_6UmYfpE",
+  "projectId": "mens-ensemble-hst13",
+  "appId": "1:804689960274:web:14ef670cf054b6c6fbae8b",
+  "storageBucket": "mens-ensemble-hst13.firebasestorage.app",
+  "messagingSenderId": "804689960274",
+  "authDomain": "mens-ensemble-hst13.web.app"
+};
+const APP_URL = 'https://mens-ensemble-hst13.web.app/';
+if (APP_URL && location.hostname.endsWith('github.io')) location.replace(APP_URL);
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+let db;
+try { db = initializeFirestore(app, {localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})}); }
+catch (e) { db = initializeFirestore(app, {}); }
+const accessRef = doc(db, 'access', 'main');
+const mainRef = doc(db, 'ensemble', 'main');
+const rehCol = collection(db, 'ensemble', 'main', 'rehearsals');
+const rehRef = date => doc(rehCol, date);
+
 // ---------- constants ----------
 const PARTS = [
   {id:'T1', name:'Tenor I',  color:'#2563eb'},
@@ -150,7 +186,8 @@ const PART_ORDER = {T1:0, T2:1, BR:2, BS:3, '':4};
 const STATUS = {P:'Present', L:'Late', E:'Excused', A:'Absent'};
 const STATUS_COLOR = {P:'var(--P)', L:'var(--L)', E:'var(--E)', A:'var(--A)'};
 const CYCLE = [undefined, 'P', 'L', 'E', 'A'];
-const KEY = 'mens-ensemble-v1';
+const LEGACY_KEY = 'mens-ensemble-v1';   // data saved on-device by the first version
+const PREFS_KEY = 'mens-ensemble-prefs';
 
 // ---------- helpers ----------
 const $ = (s, r=document) => r.querySelector(s);
@@ -161,43 +198,183 @@ function todayStr(){ const d = new Date(); return `${d.getFullYear()}-${String(d
 function fmtDate(s, opts){ const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d).toLocaleDateString(undefined, opts || {weekday:'short', month:'short', day:'numeric', year:'numeric'}); }
 const sortByPart = (a,b) => PART_ORDER[a.part]-PART_ORDER[b.part] || a.last.localeCompare(b.last) || a.first.localeCompare(b.first);
 const sortByName = (a,b) => a.last.localeCompare(b.last) || a.first.localeCompare(b.first);
+function readJSON(key){ try { return JSON.parse(localStorage.getItem(key)); } catch(e){ return null; } }
+function writeJSON(key, v){ try { localStorage.setItem(key, JSON.stringify(v)); } catch(e){} }
 
 // ---------- state ----------
 function newChart(name, rows, cols){ return {id:uid(), name, rows, cols, seats:{}}; }
-function blankState(){ const c = newChart('Rehearsal', 4, 11); return {version:1, members:[], charts:[c], currentChartId:c.id, rehearsals:{}, meta:{lastChange:0, lastExport:0}}; }
-function normalize(s){
-  s.members = Array.isArray(s.members) ? s.members : [];
-  s.members.forEach(m => { if (m.active === undefined) m.active = true; m.part = m.part || ''; m.first = m.first || ''; m.last = m.last || ''; });
-  if (!Array.isArray(s.charts) || !s.charts.length) s.charts = [newChart('Rehearsal', 4, 11)];
-  s.charts.forEach(c => { c.seats = c.seats || {}; });
-  if (!s.charts.find(c => c.id === s.currentChartId)) s.currentChartId = s.charts[0].id;
-  s.rehearsals = s.rehearsals || {};
-  s.meta = s.meta || {lastChange:0, lastExport:0};
-  return s;
+function cleanMembers(list){
+  return (Array.isArray(list) ? list : []).map(m => ({id: m.id || uid(), first: m.first || '', last: m.last || '', part: m.part || '', active: m.active !== false}));
 }
-function load(){ try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.members) return normalize(s); } catch(e){} return blankState(); }
-function persist(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){ alert('Could not save on this device: ' + e.message); } }
-function commit(){ state.meta.lastChange = Date.now(); persist(); render(); }
+function cleanCharts(list){
+  const charts = (Array.isArray(list) ? list : []).map(c => ({id: c.id || uid(), name: c.name || 'Chart', rows: c.rows || 4, cols: c.cols || 10, seats: c.seats || {}}));
+  return charts.length ? charts : [newChart('Rehearsal', 4, 11)];
+}
 
-let state = load();
-const ui = { mode:'seating', selected:null, attDate:todayStr(), modal:null };
+const prefs = readJSON(PREFS_KEY) || {};
+let state = {members:[], charts:cleanCharts([]), rehearsals:{}, currentChartId:prefs.currentChartId};
+const session = {phase:'loading', user:null, email:'', access:null, isOwner:false, error:'', mainLoaded:false, rehLoaded:false, pendingMain:false, pendingReh:false, fromCache:false, unsubs:[], legacyAsked:false};
+const ui = { mode: prefs.mode || 'seating', selected:null, attDate:todayStr(), modal:null, modalLive:false };
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
 
 const member = id => state.members.find(m => m.id === id);
 const activeMembers = () => state.members.filter(m => m.active);
-const curChart = () => state.charts.find(c => c.id === state.currentChartId);
+function curChart(){ return state.charts.find(c => c.id === state.currentChartId) || state.charts[0]; }
+function setCurrentChart(id){ state.currentChartId = id; prefs.currentChartId = id; writeJSON(PREFS_KEY, prefs); }
 const seatOf = (ch, mid) => Object.keys(ch.seats).find(k => ch.seats[k] === mid);
 
+// ---------- cloud writes ----------
+let errorShown = false;
+function writeFailed(e){
+  console.error(e);
+  if (errorShown) return; errorShown = true;
+  alert(e.code === 'permission-denied' ? 'Your account no longer has permission to make changes.' : 'Could not save a change: ' + e.message);
+  setTimeout(() => errorShown = false, 5000);
+}
+function mainPayload(){ return {members: state.members, charts: state.charts, updatedAt: serverTimestamp(), updatedBy: session.email}; }
+// Roster and seating changes: save the whole roster/charts document.
+function commit(){ setDoc(mainRef, mainPayload()).catch(writeFailed); render(); }
+// Attendance changes: write only the one singer's status, so two people can take attendance at once.
+function setStatuses(date, changes){
+  let reh = state.rehearsals[date];
+  if (!reh) reh = state.rehearsals[date] = {chartId: rehearsalChart(date).id, records:{}};
+  Object.entries(changes).forEach(([mid, s]) => { if (s) reh.records[mid] = s; else delete reh.records[mid]; });
+  const ref = rehRef(date);
+  if (!Object.keys(reh.records).length) { delete state.rehearsals[date]; deleteDoc(ref).catch(writeFailed); }
+  else {
+    const sets = Object.fromEntries(Object.entries(changes).filter(([, s]) => s));
+    const clears = Object.keys(changes).filter(mid => !changes[mid]);
+    if (Object.keys(sets).length) setDoc(ref, {chartId: reh.chartId, records: sets}, {merge:true}).catch(writeFailed);
+    clears.forEach(mid => updateDoc(ref, new FieldPath('records', mid), deleteField()).catch(writeFailed));
+  }
+  render();
+}
+
+// Replace everything in the cloud with a backup (or this device's old data).
+async function importData(data){
+  const members = cleanMembers(data.members), charts = cleanCharts(data.charts);
+  const rehearsals = data.rehearsals || {};
+  const existing = await getDocs(rehCol);
+  const ops = [b => b.set(mainRef, {members, charts, updatedAt: serverTimestamp(), updatedBy: session.email})];
+  existing.forEach(d => { if (!rehearsals[d.id]) ops.push(b => b.delete(d.ref)); });
+  Object.entries(rehearsals).forEach(([date, r]) => {
+    if (r && r.records && Object.keys(r.records).length) ops.push(b => b.set(rehRef(date), {chartId: r.chartId || charts[0].id, records: r.records}));
+  });
+  for (let i = 0; i < ops.length; i += 400) { const b = writeBatch(db); ops.slice(i, i+400).forEach(op => op(b)); await b.commit(); }
+  setCurrentChart(charts[0].id);
+}
+
+// ---------- auth & subscriptions ----------
+function unsubscribeAll(){ session.unsubs.forEach(u => u()); session.unsubs = []; }
+onAuthStateChanged(auth, async user => {
+  unsubscribeAll();
+  state = {members:[], charts:cleanCharts([]), rehearsals:{}, currentChartId:prefs.currentChartId};
+  Object.assign(session, {user, email: user ? (user.email || '').toLowerCase() : '', access:null, isOwner:false, mainLoaded:false, rehLoaded:false});
+  if (!user) { session.phase = 'signin'; return render(); }
+  session.phase = 'loading'; render();
+  try {
+    const snap = await getDoc(accessRef);
+    if (snap.exists()) session.access = snap.data();
+    else { // first sign-in by the owner creates the access list (the security rules only allow the owner to do this)
+      const a = {owner: session.email, editors: []};
+      await setDoc(accessRef, a);
+      session.access = a;
+    }
+  } catch (e) {
+    session.phase = e.code === 'permission-denied' ? 'denied' : 'error';
+    session.error = e.message;
+    return render();
+  }
+  session.isOwner = session.access.owner === session.email;
+  subscribe();
+});
+
+function subscribe(){
+  session.unsubs.push(onSnapshot(accessRef, s => { if (s.exists()) { session.access = s.data(); if (ui.modal === settingsModal) settingsModal(); } }, () => {}));
+  session.unsubs.push(onSnapshot(mainRef, {includeMetadataChanges:true}, s => {
+    session.pendingMain = s.metadata.hasPendingWrites;
+    session.fromCache = s.metadata.fromCache;
+    if (s.exists()) {
+      const d = s.data();
+      state.members = cleanMembers(d.members);
+      state.charts = cleanCharts(d.charts);
+    }
+    session.mainLoaded = true;
+    maybeReady();
+    if (!s.exists() && !s.metadata.fromCache) offerLegacyUpload();
+  }, e => { session.phase = 'error'; session.error = e.message; render(); }));
+  session.unsubs.push(onSnapshot(rehCol, {includeMetadataChanges:true}, qs => {
+    session.pendingReh = qs.metadata.hasPendingWrites;
+    const r = {};
+    qs.forEach(d => { r[d.id] = d.data(); });
+    state.rehearsals = r;
+    session.rehLoaded = true;
+    maybeReady();
+  }, e => { session.phase = 'error'; session.error = e.message; render(); }));
+}
+function maybeReady(){
+  if (session.mainLoaded && session.rehLoaded) session.phase = 'ready';
+  render();
+}
+async function offerLegacyUpload(){
+  if (session.legacyAsked) return;
+  session.legacyAsked = true;
+  const legacy = readJSON(LEGACY_KEY);
+  if (!legacy || !Array.isArray(legacy.members) || !legacy.members.length) return;
+  const n = Object.keys(legacy.rehearsals || {}).length;
+  if (!confirm(`This device has ${legacy.members.length} singers and ${n} rehearsal(s) saved from before cloud sync.\n\nUpload them to your account now?`)) return;
+  try { await importData(legacy); localStorage.removeItem(LEGACY_KEY); }
+  catch (e) { alert('Upload failed: ' + e.message); }
+}
+async function doSignIn(){
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({prompt: 'select_account'});
+  const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  try {
+    if (standalone) await signInWithRedirect(auth, provider);
+    else await signInWithPopup(auth, provider);
+  } catch (e) {
+    if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') return signInWithRedirect(auth, provider);
+    if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') alert('Sign-in failed: ' + e.message);
+  }
+}
+
 // ---------- rendering ----------
+let renderQueued = false;
 function render(){
+  if (drag && drag.started) { renderQueued = true; return; } // don't redraw under a finger mid-drag
+  const ready = session.phase === 'ready';
+  $('#tabs').hidden = !ready; $('#tabs-spacer').hidden = ready; $('#settings-btn').hidden = !session.user;
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.mode === ui.mode));
-  $('#backup-dot').hidden = !(state.members.length && state.meta.lastChange > state.meta.lastExport);
+  const sync = $('#sync');
+  if (!ready) { sync.textContent = ''; }
+  else if (!navigator.onLine || session.fromCache) { sync.textContent = 'Offline · changes will sync'; sync.className = 'sync warn'; }
+  else if (session.pendingMain || session.pendingReh) { sync.textContent = 'Saving…'; sync.className = 'sync'; }
+  else { sync.textContent = 'All changes saved'; sync.className = 'sync'; }
+
   const keep = {};
   document.querySelectorAll('[data-scroll]').forEach(el => keep[el.dataset.scroll] = el.scrollTop);
   const v = $('#view');
-  v.innerHTML = ui.mode === 'seating' ? seatingHTML() : ui.mode === 'attendance' ? attendanceHTML() : rosterHTML();
+  if (session.phase === 'signin') v.innerHTML = signinHTML();
+  else if (session.phase === 'denied') v.innerHTML = deniedHTML();
+  else if (session.phase === 'error') v.innerHTML = messageHTML('Can’t connect', esc(session.error) + '<br>Check the internet connection and reload.');
+  else if (session.phase === 'loading') v.innerHTML = messageHTML('Loading…', '');
+  else v.innerHTML = ui.mode === 'seating' ? seatingHTML() : ui.mode === 'attendance' ? attendanceHTML() : rosterHTML();
   document.querySelectorAll('[data-scroll]').forEach(el => { if (keep[el.dataset.scroll] != null) el.scrollTop = keep[el.dataset.scroll]; });
-  if (ui.modal) ui.modal();
+  if (ui.modal && ui.modalLive) ui.modal();
+}
+window.addEventListener('online', render); window.addEventListener('offline', render);
+
+function messageHTML(title, body){ return `<div class="center"><div class="card"><img src="icon-180.png" alt=""><h2>${title}</h2><p>${body}</p></div></div>`; }
+function signinHTML(){
+  return `<div class="center"><div class="card"><img src="icon-180.png" alt=""><h2>Men's Ensemble</h2>
+    <p>Sign in to see the roster, seating charts and attendance on any device.</p>
+    <button class="btn primary" data-action="signin">Sign in with Google</button></div></div>`;
+}
+function deniedHTML(){
+  return `<div class="center"><div class="card"><img src="icon-180.png" alt=""><h2>No access yet</h2>
+    <p><b>${esc(session.email)}</b> isn't on the list of people who can use this app. Ask the director to add this email address in Settings.</p>
+    <button class="btn" data-action="signout">Sign in with a different account</button></div></div>`;
 }
 
 function chartOptions(selectedId){
@@ -230,7 +407,7 @@ function seatingHTML(){
     grid += `<div class="rowlabel">Row ${r+1}</div>`;
     for (let c = 0; c < ch.cols; c++){
       const k = `${r},${c}`, m = ch.seats[k] && member(ch.seats[k]);
-      if (!m) { grid += `<div class="seat" data-seat="${k}"></div>`; continue; }
+      if (!m || !m.active) { grid += `<div class="seat" data-seat="${k}"></div>`; continue; }
       grid += `<div class="seat full" data-seat="${k}"><div class="occ ${ui.selected===m.id?'sel':''}" data-member="${m.id}" style="--pc:${partOf(m.part).color}"><span class="fn">${esc(m.first)}</span><span class="ln">${esc(m.last)}</span></div></div>`;
     }
   }
@@ -343,7 +520,7 @@ function rosterHTML(){
     <div class="counts"><span class="cnt" style="--c:var(--ink)"><i></i>${act.length} singers</span>${counts.map(x => `<span class="cnt" style="--c:${x.p.color}"><i></i>${x.p.name} ${x.n}</span>`).join('')}</div>
   </div>
   <div class="scroll" data-scroll="roster">
-    ${act.length ? '' : `<p class="hint">No singers yet. Add them above, or restore a backup file with the Backup button.</p>`}
+    ${act.length ? '' : `<p class="hint">No singers yet. Add them above, or restore a backup file from Settings.</p>`}
     ${act.map(m => `<div class="rrow"><i class="dot" style="--pc:${partOf(m.part).color}"></i><button class="name" data-action="edit-member" data-id="${m.id}">${esc(m.last)}, ${esc(m.first)}</button>${partSeg(m)}<button class="btn small danger" data-action="remove-member" data-id="${m.id}">Remove</button></div>`).join('')}
     ${former.length ? `<div class="sectionhead">Former members (attendance history kept)</div>` + former.map(m => `<div class="rrow"><i class="dot" style="--pc:${partOf(m.part).color}"></i><span class="name" style="color:var(--muted)">${esc(m.last)}, ${esc(m.first)}</span><button class="btn small" data-action="restore-member" data-id="${m.id}">Restore</button><button class="btn small danger" data-action="purge-member" data-id="${m.id}">Delete forever</button></div>`).join('') : ''}
   </div>`;
@@ -353,7 +530,8 @@ function rosterHTML(){
 function openModal(html, wide){
   $('#modal-root').innerHTML = `<div class="backdrop"><div class="modal ${wide?'wide':''}" data-scroll="modal">${html}</div></div>`;
 }
-function showModal(fn){ ui.modal = fn; fn(); }
+// live modals redraw when synced data changes; form modals don't (so typing isn't lost)
+function showModal(fn, live = true){ ui.modal = fn; ui.modalLive = live; fn(); }
 function closeModal(){ ui.modal = null; $('#modal-root').innerHTML = ''; }
 
 function memberModal(id){
@@ -375,17 +553,18 @@ function historyModal(){
   const dates = Object.keys(state.rehearsals).sort().reverse();
   openModal(`<h2>Past rehearsals</h2>
     ${dates.length ? dates.map(d => {
-      const rec = state.rehearsals[d].records;
+      const rec = state.rehearsals[d].records || {};
       return `<div class="hrow"><b>${fmtDate(d)}</b>${countsHTML(countRecords(rec, Object.keys(rec)))}<div class="spacer"></div><button class="btn small" data-action="open-date" data-date="${d}">Open</button><button class="btn small danger" data-action="delete-date" data-date="${d}">Delete</button></div>`;
     }).join('') : `<p class="hint">No attendance recorded yet.</p>`}
     <div class="modal-actions"><button class="btn primary" data-action="close">Close</button></div>`, true);
 }
 function totalsRows(){
   const dates = Object.keys(state.rehearsals);
-  const people = state.members.filter(m => m.active || dates.some(d => state.rehearsals[d].records[m.id])).sort(sortByPart);
+  const rec = d => state.rehearsals[d].records || {};
+  const people = state.members.filter(m => m.active || dates.some(d => rec(d)[m.id])).sort(sortByPart);
   return people.map(m => {
     const n = {P:0, L:0, E:0, A:0};
-    dates.forEach(d => { const s = state.rehearsals[d].records[m.id]; if (s) n[s]++; });
+    dates.forEach(d => { const s = rec(d)[m.id]; if (s) n[s]++; });
     const marked = n.P + n.L + n.E + n.A;
     return {m, n, pct: marked ? Math.round((n.P + n.L) / marked * 100) : null};
   });
@@ -399,17 +578,25 @@ function totalsModal(){
     <p class="hint" style="margin-top:12px">"Attended" counts Present and Late, out of every rehearsal where the singer was marked.</p>
     <div class="modal-actions"><button class="btn primary" data-action="close">Close</button></div>`, true);
 }
-function backupModal(){
-  const last = state.meta.lastExport;
-  const dirty = state.meta.lastChange > last;
-  openModal(`<h2>Backup &amp; export</h2>
-    <div class="status-msg">${last ? `Last backup: ${new Date(last).toLocaleString()}.` : 'No backup saved yet.'} ${dirty && state.members.length ? '<b>You have changes since then.</b>' : last ? 'Everything is backed up.' : ''}</div>
-    <div class="stack">
-      <button class="btn" data-action="export-json">Save backup to Files…<small>Everything: roster, seating charts and attendance. In the share sheet, choose <b>Save to Files</b> and then an iCloud Drive folder.</small></button>
-      <button class="btn" data-action="export-csv">Export attendance spreadsheet (CSV)…<small>One row per singer and one column per rehearsal. Opens in Numbers or Excel.</small></button>
-      <button class="btn" data-action="import">Restore from backup…<small>Replaces everything on this device with a backup file.</small></button>
-    </div>
-    <div class="modal-actions"><button class="btn primary" data-action="close">Close</button></div>`);
+function settingsModal(){
+  const a = session.access || {owner:'', editors:[]};
+  const ready = session.phase === 'ready';
+  openModal(`<h2>Settings</h2>
+    <div class="status-msg">Signed in as <b>${esc(session.email)}</b>${session.isOwner ? ' (owner)' : ''}. Everything saves to your account automatically and appears on every device you sign in on.</div>
+    ${ready && session.isOwner ? `
+      <div class="label">People who can use this app</div>
+      <div class="erow"><span>${esc(a.owner)}</span><span class="hint" style="flex:none;margin:0">Owner</span></div>
+      ${(a.editors || []).map(e => `<div class="erow"><span>${esc(e)}</span><button class="btn small danger" data-action="remove-editor" data-email="${esc(e)}">Remove</button></div>`).join('')}
+      <form data-submit="add-editor" class="field" style="margin-top:10px"><input name="email" type="email" placeholder="Their Google account email" required autocomplete="off"><button class="btn">Add person</button></form>
+      <p class="hint" style="margin-top:8px">They sign in with that Google account and can edit everything except this list.</p>` : ''}
+    ${ready ? `
+      <div class="label">Files</div>
+      <div class="stack">
+        <button class="btn" data-action="export-json">Save a backup copy to Files…<small>Roster, seating charts and attendance in one file. Optional, since everything is already saved online.</small></button>
+        <button class="btn" data-action="export-csv">Export attendance spreadsheet (CSV)…<small>One row per singer and one column per rehearsal. Opens in Numbers or Excel.</small></button>
+        <button class="btn" data-action="import">Restore from backup…<small>Replaces everything in your account with a backup file, for everyone who uses the app.</small></button>
+      </div>` : ''}
+    <div class="modal-actions"><button class="btn" data-action="signout">Sign out</button><button class="btn primary" data-action="close">Close</button></div>`);
 }
 
 // ---------- mutations ----------
@@ -435,13 +622,9 @@ function resizeChart(dr, dc){
   commit();
 }
 function cycleStatus(mid){
-  const date = ui.attDate;
-  let reh = state.rehearsals[date];
-  if (!reh) reh = state.rehearsals[date] = {chartId: rehearsalChart(date).id, records:{}};
-  const next = CYCLE[(CYCLE.indexOf(reh.records[mid]) + 1) % CYCLE.length];
-  if (next) reh.records[mid] = next; else delete reh.records[mid];
-  if (!Object.keys(reh.records).length) delete state.rehearsals[date];
-  commit();
+  const reh = state.rehearsals[ui.attDate];
+  const cur = reh && reh.records[mid];
+  setStatuses(ui.attDate, {[mid]: CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length] || null});
 }
 
 // ---------- files ----------
@@ -465,7 +648,7 @@ function attendanceCSV(){
   const dates = Object.keys(state.rehearsals).sort();
   const header = ['Last Name','First Name','Part','Member', ...dates, 'Present','Late','Excused','Absent','Attended %'];
   const rows = totalsRows().map(({m, n, pct}) => [m.last, m.first, partOf(m.part).name, m.active ? 'Current' : 'Former',
-    ...dates.map(d => STATUS[state.rehearsals[d].records[m.id]] || ''), n.P, n.L, n.E, n.A, pct == null ? '' : pct]);
+    ...dates.map(d => STATUS[(state.rehearsals[d].records || {})[m.id]] || ''), n.P, n.L, n.E, n.A, pct == null ? '' : pct]);
   return [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
 }
 $('#import-input').addEventListener('change', async e => {
@@ -476,12 +659,10 @@ $('#import-input').addEventListener('change', async e => {
     if (!Array.isArray(data.members) || !Array.isArray(data.charts)) throw new Error('This file is not a Men\'s Ensemble backup.');
     const when = data.exportedAt ? ` saved ${new Date(data.exportedAt).toLocaleString()}` : '';
     const msg = `Restore this backup${when}?\n\n${data.members.length} singers, ${data.charts.length} seating chart(s), ${Object.keys(data.rehearsals||{}).length} rehearsal(s).` +
-      (state.members.length ? '\n\nThis replaces everything currently on this device.' : '');
+      (state.members.length ? '\n\nThis replaces everything currently saved in your account, for everyone who uses the app.' : '');
     if (!confirm(msg)) return;
-    delete data.exportedAt;
-    state = normalize(data);
-    state.meta.lastExport = state.meta.lastChange = Date.now();
-    persist(); closeModal(); render();
+    await importData(data);
+    closeModal();
   } catch(err) { alert('Could not restore: ' + err.message); }
 });
 
@@ -490,7 +671,7 @@ document.addEventListener('click', async e => {
   const t = e.target;
   if (t.classList.contains('backdrop')) return closeModal();
   const tab = t.closest('.tabs button');
-  if (tab) { ui.mode = tab.dataset.mode; ui.selected = null; return render(); }
+  if (tab) { ui.mode = prefs.mode = tab.dataset.mode; writeJSON(PREFS_KEY, prefs); ui.selected = null; return render(); }
 
   const att = t.closest('[data-att]');
   if (att) return cycleStatus(att.dataset.att);
@@ -502,27 +683,34 @@ document.addEventListener('click', async e => {
   const a = t.closest('[data-action]'); if (!a) return;
   const ch = curChart(), id = a.dataset.id;
   switch (a.dataset.action){
+    case 'signin': doSignIn(); break;
+    case 'signout': closeModal(); await signOut(auth); break;
     case 'close': closeModal(); break;
-    case 'backup': showModal(backupModal); break;
+    case 'settings': showModal(settingsModal, false); break;
     case 'import': $('#import-input').click(); break;
-    case 'export-json': {
-      const ok = await saveFile(`Mens Ensemble Backup ${todayStr()}.json`, JSON.stringify({...state, exportedAt: Date.now()}, null, 1), 'application/json');
-      if (ok) { state.meta.lastExport = Date.now(); persist(); render(); }
+    case 'export-json':
+      await saveFile(`Mens Ensemble Backup ${todayStr()}.json`, JSON.stringify({members: state.members, charts: state.charts, rehearsals: state.rehearsals, exportedAt: Date.now()}, null, 1), 'application/json');
+      break;
+    case 'export-csv': await saveFile(`Mens Ensemble Attendance ${todayStr()}.csv`, attendanceCSV(), 'text/csv'); break;
+    case 'remove-editor': {
+      const em = a.dataset.email;
+      if (confirm(`Remove ${em}? They won't be able to open the app anymore.`)) {
+        setDoc(accessRef, {...session.access, editors: (session.access.editors || []).filter(x => x !== em)}).catch(writeFailed);
+      }
       break;
     }
-    case 'export-csv': await saveFile(`Mens Ensemble Attendance ${todayStr()}.csv`, attendanceCSV(), 'text/csv'); break;
     case 'chart-new': {
       const name = prompt('Name for the new seating chart:', ''); if (!name) break;
-      const c = newChart(name.trim(), ch.rows, ch.cols); state.charts.push(c); state.currentChartId = c.id; commit(); break;
+      const c = newChart(name.trim(), ch.rows, ch.cols); state.charts.push(c); setCurrentChart(c.id); commit(); break;
     }
     case 'chart-rename': { const name = prompt('Rename seating chart:', ch.name); if (name) { ch.name = name.trim(); commit(); } break; }
     case 'chart-dup': {
       const name = prompt('Name for the copy:', ch.name + ' copy'); if (!name) break;
-      const c = {...newChart(name.trim(), ch.rows, ch.cols), seats:{...ch.seats}}; state.charts.push(c); state.currentChartId = c.id; commit(); break;
+      const c = {...newChart(name.trim(), ch.rows, ch.cols), seats:{...ch.seats}}; state.charts.push(c); setCurrentChart(c.id); commit(); break;
     }
     case 'chart-delete':
       if (state.charts.length > 1 && confirm(`Delete the seating chart "${ch.name}"? Attendance records are not affected.`)) {
-        state.charts = state.charts.filter(c => c !== ch); state.currentChartId = state.charts[0].id; commit();
+        state.charts = state.charts.filter(c => c !== ch); setCurrentChart(state.charts[0].id); commit();
       }
       break;
     case 'chart-clear': if (confirm(`Remove everyone from the seats in "${ch.name}"?`)) { ch.seats = {}; commit(); } break;
@@ -530,7 +718,7 @@ document.addEventListener('click', async e => {
     case 'cols': resizeChart(0, +a.dataset.d); break;
     case 'set-part': member(id).part = a.dataset.part; commit(); break;
     case 'unseat': closeModal(); unseat(id); break;
-    case 'edit-member': showModal(() => editMemberModal(id)); break;
+    case 'edit-member': showModal(() => editMemberModal(id), false); break;
     case 'remove-member': {
       const m = member(id);
       if (confirm(`Remove ${m.first} ${m.last} from the roster?\n\nThey'll be taken off every seating chart. Their past attendance is kept, and you can restore them later.`)) {
@@ -543,23 +731,24 @@ document.addEventListener('click', async e => {
       const m = member(id);
       if (confirm(`Permanently delete ${m.first} ${m.last} and all of their attendance records? This cannot be undone.`)) {
         state.members = state.members.filter(x => x.id !== id);
-        Object.keys(state.rehearsals).forEach(d => { delete state.rehearsals[d].records[id]; if (!Object.keys(state.rehearsals[d].records).length) delete state.rehearsals[d]; });
+        Object.keys(state.rehearsals).forEach(d => { if ((state.rehearsals[d].records || {})[id]) setStatuses(d, {[id]: null}); });
         commit();
       }
       break;
     }
     case 'goto-date': if (a.dataset.date) { ui.attDate = a.dataset.date; render(); } break;
     case 'mark-rest': {
-      let reh = state.rehearsals[ui.attDate];
-      if (!reh) reh = state.rehearsals[ui.attDate] = {chartId: rehearsalChart(ui.attDate).id, records:{}};
-      activeMembers().forEach(m => { if (!reh.records[m.id]) reh.records[m.id] = 'P'; });
-      commit(); break;
+      const rec = (state.rehearsals[ui.attDate] || {}).records || {};
+      const changes = {};
+      activeMembers().forEach(m => { if (!rec[m.id]) changes[m.id] = 'P'; });
+      setStatuses(ui.attDate, changes);
+      break;
     }
     case 'history': showModal(historyModal); break;
     case 'totals': showModal(totalsModal); break;
     case 'open-date': ui.attDate = a.dataset.date; closeModal(); render(); break;
     case 'delete-date':
-      if (confirm(`Delete all attendance for ${fmtDate(a.dataset.date)}?`)) { delete state.rehearsals[a.dataset.date]; commit(); }
+      if (confirm(`Delete all attendance for ${fmtDate(a.dataset.date)}?`)) { delete state.rehearsals[a.dataset.date]; deleteDoc(rehRef(a.dataset.date)).catch(writeFailed); render(); }
       break;
   }
 });
@@ -567,12 +756,13 @@ document.addEventListener('click', async e => {
 document.addEventListener('change', e => {
   const t = e.target;
   switch (t.dataset.change){
-    case 'chart': state.currentChartId = t.value; ui.selected = null; commit(); break;
+    case 'chart': setCurrentChart(t.value); ui.selected = null; render(); break;
     case 'att-date': if (t.value) { ui.attDate = t.value; render(); } break;
     case 'att-chart': {
-      state.currentChartId = t.value;
-      if (state.rehearsals[ui.attDate]) state.rehearsals[ui.attDate].chartId = t.value;
-      commit(); break;
+      setCurrentChart(t.value);
+      const reh = state.rehearsals[ui.attDate];
+      if (reh) { reh.chartId = t.value; setDoc(rehRef(ui.attDate), {chartId: t.value}, {merge:true}).catch(writeFailed); }
+      render(); break;
     }
   }
 });
@@ -580,6 +770,12 @@ document.addEventListener('change', e => {
 document.addEventListener('submit', e => {
   e.preventDefault();
   const f = e.target, d = Object.fromEntries(new FormData(f));
+  if (f.dataset.submit === 'add-editor') {
+    const em = (d.email || '').trim().toLowerCase();
+    if (!em || em === session.access.owner || (session.access.editors || []).includes(em)) return;
+    setDoc(accessRef, {...session.access, editors: [...(session.access.editors || []), em]}).catch(writeFailed);
+    return;
+  }
   const first = (d.first || '').trim(), last = (d.last || '').trim();
   if (!first || !last) return;
   if (f.dataset.submit === 'add-member') {
@@ -594,7 +790,7 @@ document.addEventListener('submit', e => {
 // ---------- drag & drop (pointer events, works with touch and mouse) ----------
 let drag = null;
 document.addEventListener('pointerdown', e => {
-  if (ui.mode !== 'seating' || (e.button && e.button !== 0)) return;
+  if (ui.mode !== 'seating' || session.phase !== 'ready' || (e.button && e.button !== 0)) return;
   const el = e.target.closest('[data-member]'); if (!el) return;
   const seatEl = el.closest('[data-seat]');
   drag = { id: el.dataset.member, from: seatEl ? seatEl.dataset.seat : null, el, pid: e.pointerId,
@@ -608,7 +804,7 @@ window.addEventListener('pointermove', e => {
   drag.x = e.clientX; drag.y = e.clientY;
   const dx = drag.x - drag.x0, dy = drag.y - drag.y0, dist = Math.hypot(dx, dy);
   if (!drag.started) {
-    if (drag.touch && drag.inList) { if (dist > 8) { if (Math.abs(dx) > Math.abs(dy)) startDrag(); else cancelDrag(); } }
+    if (drag.touch && drag.inList) { if (dist > 8) { if (Math.abs(dx) > Math.abs(dy)) startDrag(); else endDrag(); } }
     else if (dist > 6) startDrag();
     return;
   }
@@ -616,18 +812,19 @@ window.addEventListener('pointermove', e => {
 });
 window.addEventListener('pointerup', e => {
   if (!drag || e.pointerId !== drag.pid) return;
-  const d = drag; clearTimeout(d.timer);
+  const d = drag;
   endDrag();
   if (d.started) {
     const target = document.elementFromPoint(e.clientX, e.clientY);
     const seatEl = target && target.closest('[data-seat]');
     if (seatEl) placeInSeat(d.id, seatEl.dataset.seat);
-    else if (target && target.closest('.pool')) { if (d.from) unseat(d.id); }
+    else if (target && target.closest('.pool') && d.from) unseat(d.id);
+    else if (renderQueued) render();
   } else {
     tapMember(d.id, d.from);
   }
 });
-window.addEventListener('pointercancel', e => { if (drag && e.pointerId === drag.pid) cancelDrag(); });
+window.addEventListener('pointercancel', e => { if (drag && e.pointerId === drag.pid) endDrag(); });
 document.addEventListener('touchmove', e => { if (drag && drag.started) e.preventDefault(); }, {passive:false});
 
 function startDrag(){
@@ -656,8 +853,8 @@ function endDrag(){
   drag.el.classList.remove('dragging');
   document.querySelectorAll('.seat.drop').forEach(x => x.classList.remove('drop'));
   drag = null;
+  renderQueued = false;
 }
-function cancelDrag(){ endDrag(); }
 function tapMember(id, fromSeat){
   if (ui.selected === id) { ui.selected = null; return render(); }
   if (fromSeat && ui.selected) return placeInSeat(ui.selected, fromSeat); // swap selected singer into this seat
@@ -667,7 +864,7 @@ function tapMember(id, fromSeat){
 
 // ---------- start ----------
 render();
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(()=>{});
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>
 </html>
